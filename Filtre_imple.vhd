@@ -35,6 +35,7 @@ architecture Behavioral of delay_line is
 
   -- FIFO signals
   signal fifo1_dout, fifo2_dout : std_logic_vector(7 downto 0);
+  signal fifo1_empty, fifo2_empty : std_logic;
 
   -- Line registers (3 pixels per ligne)
   signal line0 : std_logic_vector(7 downto 0);
@@ -56,7 +57,7 @@ begin
       rd_en => rd_en,
       dout => fifo1_dout,
       full => open,
-      empty => open,
+      empty => fifo1_empty,
       prog_full_thresh => (others => '0'),
       prog_full => open,
       wr_rst_busy => open,
@@ -73,7 +74,7 @@ begin
       rd_en => rd_en,
       dout => fifo2_dout,
       full => open,
-      empty => open,
+      empty => fifo2_empty,
       prog_full_thresh => (others => '0'),
       prog_full => open,
       wr_rst_busy => open,
@@ -81,38 +82,44 @@ begin
     );
 
   -- Shift registers for each line
-  process(clk)
-  begin
-    if rising_edge(clk) then
-      if rst = '1' then
-        line0 <= (others => '0');
-        line0_1 <= (others => '0');
-        line0_2 <= (others => '0');
-        line1 <= (others => '0');
-        line1_1 <= (others => '0');
-        line1_2 <= (others => '0');
-        line2 <= (others => '0');
-        line2_1 <= (others => '0');
-        line2_2 <= (others => '0');
-        data_available <= '0';
+ process(clk)
+begin
+  if rising_edge(clk) then
+    if rst = '1' then
+      -- Reset des registres
+      line0 <= (others => '0');
+      line0_1 <= (others => '0');
+      line0_2 <= (others => '0');
+      line1 <= (others => '0');
+      line1_1 <= (others => '0');
+      line1_2 <= (others => '0');
+      line2 <= (others => '0');
+      line2_1 <= (others => '0');
+      line2_2 <= (others => '0');
+      data_available <= '0';
+    else
+      -- Décalage des pixels
+      line0_2 <= line0_1;
+      line0_1 <= line0;
+      line0 <= pixel_in;
+
+      line1_2 <= line1_1;
+      line1_1 <= line1;
+      line1 <= fifo1_dout;
+
+      line2_2 <= line2_1;
+      line2_1 <= line2;
+      line2 <= fifo2_dout;
+
+      -- Vérification des FIFO
+      if fifo1_empty = '0' and fifo2_empty = '0' then
+        data_available <= '1';
       else
-        -- Shift pixels
-        line0_2 <= line0_1;
-        line0_1 <= line0;
-        line0 <= pixel_in;
-
-        line1_2 <= line1_1;
-        line1_1 <= line1;
-        line1 <= fifo1_dout;
-
-        line2_2 <= line2_1;
-        line2_1 <= line2;
-        line2 <= fifo2_dout;
-
-        data_available <= '1'; -- active à chaque cycle après reset
+        data_available <= '0';
       end if;
     end if;
-  end process;
+  end if;
+end process;
 
   -- Output pixels
   p0 <= line0;
