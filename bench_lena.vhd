@@ -1,5 +1,6 @@
 library ieee;
 use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
 use std.textio.all;
 use ieee.std_logic_textio.all;
 
@@ -18,6 +19,9 @@ architecture arch_tb_lena_dupliq of tb_lena_dupliq is
       p0, p1, p2, p3, p4, p5, p6, p7, p8 : out std_logic_vector(7 downto 0)
     );
   end component;
+  
+
+signal result_pixel : std_logic_vector(7 downto 0);
 
   signal I1 : std_logic_vector(7 downto 0);
   signal CLK : std_logic := '0';
@@ -34,6 +38,7 @@ begin
       data_available => DATA,
       p0 => p0, p1 => p1, p2 => p2, p3 => p3, p4 => p4, p5 => p5, p6 => p6, p7 => p7, p8 => p8
     );
+    
 
   -- Génération d'horloge
   clk_process : process
@@ -46,21 +51,20 @@ begin
 
   -- Lecture fichier Lena
   p_read : process
-    FILE vectors : text;
+    file vectors : text;
     variable Iline : line;
     variable I1_var : std_logic_vector(7 downto 0);
   begin
-    DATA <= '0';
     file_open(vectors, "Lena128x128g_8bits.dat", read_mode);
-    wait for 20 ns;
+    wait for 100 ns;
 
     while not endfile(vectors) loop
       readline(vectors, Iline);
       read(Iline, I1_var);
       I1 <= I1_var;
+      report "Pixel lu : " & integer'image(to_integer(unsigned(I1)));
       wait for CLK_PERIOD;
     end loop;
-
 
     file_close(vectors);
     wait;
@@ -70,15 +74,21 @@ begin
   p_write : process
     file results : text;
     variable OLine : line;
+    variable pixel_count : integer := 0;
   begin
-    file_open(results, "Lena128x128g_8bits.dat", write_mode);
-    wait until DATA = '1';
-    while DATA = '1' loop
-      write(OLine, p4, right, 2); -- pixel central
-      writeline(results, OLine);
-      wait for CLK_PERIOD;
+    file_open(results, "Lena_filtered.dat", write_mode);
+    wait for 100 ns;
+
+    while pixel_count < 16384 loop
+      wait until rising_edge(CLK);
+      if DATA = '1' then
+        write(OLine, p4, right, 2); -- pixel central
+        writeline(results, OLine);
+        pixel_count := pixel_count + 1;
+      end if;
     end loop;
     file_close(results);
+    
     wait;
   end process;
 end arch_tb_lena_dupliq;
