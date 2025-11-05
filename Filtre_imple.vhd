@@ -4,18 +4,17 @@ use IEEE.NUMERIC_STD.ALL;
 
 entity delay_line is
   Port (
-      clk : in std_logic;
-      rst : in std_logic;
-      pixel_in : in std_logic_vector(7 downto 0);
-      wr_en : in std_logic;
-      rd_en : in std_logic;
-      data_available : out std_logic;
-      p0, p1, p2, p3, p4, p5, p6, p7, p8 : out std_logic_vector(7 downto 0)
-    );
+    clk : in std_logic;
+    rst : in std_logic;
+    pixel_in : in std_logic_vector(7 downto 0);
+    wr_en : in std_logic;
+    rd_en : in std_logic;
+    data_available : out std_logic;
+    p0, p1, p2, p3, p4, p5, p6, p7, p8 : out std_logic_vector(7 downto 0)
+  );
 end delay_line;
 
 architecture Behavioral of delay_line is
-
 
   component fifo_generator_0
     port (
@@ -39,19 +38,17 @@ architecture Behavioral of delay_line is
   signal fifo1_empty, fifo2_empty : std_logic;
   signal fifo1_rd_en, fifo2_rd_en, fifo2_wr_en : std_logic;
 
-  -- Pipeline registers
-  signal line0, line0_1, line0_2 : std_logic_vector(7 downto 0);
-  signal line1, line1_1, line1_2 : std_logic_vector(7 downto 0);
-  signal line2, line2_1, line2_2 : std_logic_vector(7 downto 0);
+  -- Bascule pour chaque ligne
+  signal reg0_a, reg0_b, reg0_c : std_logic_vector(7 downto 0);
+  signal reg1_a, reg1_b, reg1_c : std_logic_vector(7 downto 0);
+  signal reg2_a, reg2_b, reg2_c : std_logic_vector(7 downto 0);
 
   -- Compteur de pixels écrits
   signal write_count : integer := 0;
 
 begin
 
-  
-  -- Compteur d’écriture (sert uniquement pour contrôler le pipeline)
-
+  -- Compteur d'écriture
   process(clk)
   begin
     if rising_edge(clk) then
@@ -65,15 +62,12 @@ begin
     end if;
   end process;
 
-
   -- Contrôle lecture / écriture FIFO
-  -- On ne lit que lorsque FIFO contient des données et après un certain délai
-
   fifo1_rd_en <= '1' when (write_count > 128 and fifo1_empty = '0') else '0';
   fifo2_wr_en <= fifo1_rd_en;
   fifo2_rd_en <= '1' when (write_count > 256 and fifo2_empty = '0') else '0';
 
-
+  -- FIFO 1
   fifo1_inst : fifo_generator_0
     port map (
       clk => clk,
@@ -84,13 +78,13 @@ begin
       dout => fifo1_dout,
       full => open,
       empty => fifo1_empty,
-      prog_full_thresh => (others => '1'),
+      prog_full_thresh => std_logic_vector(to_unsigned(124, 10)),
       prog_full => open,
       wr_rst_busy => open,
       rd_rst_busy => open
     );
 
-
+  -- FIFO 2
   fifo2_inst : fifo_generator_0
     port map (
       clk => clk,
@@ -101,28 +95,38 @@ begin
       dout => fifo2_dout,
       full => open,
       empty => fifo2_empty,
-      prog_full_thresh => (others => '1'),
+      prog_full_thresh => std_logic_vector(to_unsigned(124, 10)),
       prog_full => open,
       wr_rst_busy => open,
       rd_rst_busy => open
     );
 
-
+  -- Bascule horizontale pour chaque ligne
   process(clk)
   begin
     if rising_edge(clk) then
       if rst = '1' then
-        line0 <= (others => '0'); line0_1 <= (others => '0'); line0_2 <= (others => '0');
-        line1 <= (others => '0'); line1_1 <= (others => '0'); line1_2 <= (others => '0');
-        line2 <= (others => '0'); line2_1 <= (others => '0'); line2_2 <= (others => '0');
+        reg0_a <= (others => '0'); reg0_b <= (others => '0'); reg0_c <= (others => '0');
+        reg1_a <= (others => '0'); reg1_b <= (others => '0'); reg1_c <= (others => '0');
+        reg2_a <= (others => '0'); reg2_b <= (others => '0'); reg2_c <= (others => '0');
         data_available <= '0';
       else
-        -- Décalage pixels (pipeline)
-        line0_2 <= line0_1; line0_1 <= line0; line0 <= pixel_in;
-        line1_2 <= line1_1; line1_1 <= line1; line1 <= fifo1_dout;
-        line2_2 <= line2_1; line2_1 <= line2; line2 <= fifo2_dout;
+        -- Ligne 0 (entrée directe)
+        reg0_c <= reg0_b;
+        reg0_b <= reg0_a;
+        reg0_a <= pixel_in;
 
-        -- Active data_available après que le pipeline soit rempli
+        -- Ligne 1 (sortie FIFO1)
+        reg1_c <= reg1_b;
+        reg1_b <= reg1_a;
+        reg1_a <= fifo1_dout;
+
+        -- Ligne 2 (sortie FIFO2)
+        reg2_c <= reg2_b;
+        reg2_b <= reg2_a;
+        reg2_a <= fifo2_dout;
+
+        -- Active data_available après pipeline rempli
         if write_count > 300 then
           data_available <= '1';
         else
@@ -132,9 +136,9 @@ begin
     end if;
   end process;
 
-
-  p0 <= line0;   p1 <= line0_1; p2 <= line0_2;
-  p3 <= line1;   p4 <= line1_1; p5 <= line1_2;
-  p6 <= line2;   p7 <= line2_1; p8 <= line2_2;
+  -- Sorties (ordre corrigé : p0 = pixel le plus ancien)
+  p0 <= reg0_c; p1 <= reg0_b; p2 <= reg0_a;
+  p3 <= reg1_c; p4 <= reg1_b; p5 <= reg1_a;
+  p6 <= reg2_c; p7 <= reg2_b; p8 <= reg2_a;
 
 end Behavioral;
